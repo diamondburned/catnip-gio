@@ -114,7 +114,7 @@ func run(ctx context.Context, w *app.Window) error {
 
 				// make window transparent
 				clip.Rect{Max: gtx.Constraints.Min}.Push(gtx.Ops)
-				paint.ColorOp{Color: color.NRGBA{0, 0, 0, 0}}.Add(gtx.Ops)
+				paint.ColorOp{Color: color.NRGBA{0, 0, 0, 255}}.Add(gtx.Ops)
 				paint.PaintOp{}.Add(gtx.Ops)
 
 				// draw the display
