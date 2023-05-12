@@ -28,7 +28,7 @@ func main() {
 	defer cancel()
 
 	go func() {
-		w := app.NewWindow(app.Decorated(false))
+		w := app.NewWindow()
 		if err := run(ctx, w); err != nil {
 			log.Fatal(err)
 		}
@@ -48,8 +48,8 @@ func run(ctx context.Context, w *app.Window) error {
 	config := catnip.Config{
 		Backend:      "pipewire",
 		Device:       "spotify",
-		SampleRate:   44100,
-		SampleSize:   1024,
+		SampleRate:   128000,
+		SampleSize:   1500,
 		ChannelCount: 2,
 		SetupFunc: func() error {
 			// TODO: output.Init with the right sampling sizes and windowing
@@ -86,6 +86,9 @@ func run(ctx context.Context, w *app.Window) error {
 	go func() {
 		defer wg.Done()
 
+		d := float64(config.SampleSize) / config.SampleRate * 1000
+		log.Printf("sample duration: %.2fms (%.0fHz)\n", d, 1000/d)
+
 		if err := catnip.Run(&config, ctx); err != nil {
 			log.Fatalln(err)
 		}
@@ -112,7 +115,7 @@ func run(ctx context.Context, w *app.Window) error {
 			case system.FrameEvent:
 				gtx := layout.NewContext(&ops, e)
 
-				// make window transparent
+				// make window black
 				clip.Rect{Max: gtx.Constraints.Min}.Push(gtx.Ops)
 				paint.ColorOp{Color: color.NRGBA{0, 0, 0, 255}}.Add(gtx.Ops)
 				paint.PaintOp{}.Add(gtx.Ops)
