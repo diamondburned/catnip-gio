@@ -13,6 +13,7 @@ const (
 
 func calculateBar(value, height float64) float64 {
 	bar := min(value, height)
+	bar = max(bar, 0.01)
 	return height - bar
 }
 
