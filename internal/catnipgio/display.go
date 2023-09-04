@@ -19,6 +19,7 @@ import (
 // library.
 type Display struct {
 	BarColor color.NRGBA
+	Draw     chan struct{}
 
 	window *window.MovingWindow
 	lock   sync.Mutex
@@ -41,7 +42,7 @@ var _ processor.Output = (*displayOutput)(nil)
 func NewDisplay(sampleRate float64, sampleSize int) *Display {
 	windowSize := ((int(ScalingWindow * sampleRate)) / sampleSize) * 2
 
-	d := &Display{}
+	d := &Display{Draw: make(chan struct{}, 1)}
 	d.window = window.NewMovingWindow(windowSize)
 
 	d.BarColor = color.NRGBA{255, 255, 255, 255}
@@ -101,6 +102,11 @@ func (d *displayOutput) Write(bins [][]float64, nchannels int) error {
 		d.zeroes = 0
 	} else if d.zeroes < ZeroThreshold {
 		d.zeroes++
+	}
+
+	select {
+	case d.Draw <- struct{}{}:
+	default:
 	}
 
 	return nil
