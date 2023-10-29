@@ -19,7 +19,7 @@ import (
 	"github.com/noriah/catnip/dsp"
 	"github.com/noriah/catnip/dsp/window"
 	"github.com/spf13/pflag"
-	"libdb.so/catnip-gio/internal/catnipgio"
+	"libdb.so/catnip-gio/catnipgio"
 
 	_ "github.com/noriah/catnip/input/all"
 )

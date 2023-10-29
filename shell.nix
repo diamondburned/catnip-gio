@@ -36,7 +36,7 @@ pkgs.mkShell {
 		xorg.libXcursor
 		xorg.libXfixes
 		libGL
-		pkgconfig
+		pkg-config
 	];
 
 	nativeBuildInputs = with pkgs; [
