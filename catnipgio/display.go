@@ -15,6 +15,14 @@ import (
 	window "github.com/noriah/catnip/util"
 )
 
+// SilenceThreshold is the threshold below which we consider the audio
+// to be silent.
+const SilenceThreshold = 0.0001
+
+// SilenceFrames is the number of frames we wait before we consider the
+// audio to be silent.
+const SilenceFrames = 10
+
 // Display is a display of audio data using the Cairo vector graphics
 // library.
 type Display struct {
@@ -30,6 +38,7 @@ type Display struct {
 	nchannels  int
 	peak       float64
 	scale      float64
+	silence    int
 	zeroes     int
 	barWidth   float64
 	spaceWidth float64
@@ -65,17 +74,20 @@ func (d *Display) AsOutput() processor.Output {
 	return (*displayOutput)(d)
 }
 
+func (d *Display) isSilent() bool {
+	return d.silence >= SilenceFrames
+}
+
 type displayOutput Display
+
+func (d *displayOutput) isSilent() bool {
+	return (*Display)(d).isSilent()
+}
 
 // Write implements processor.Output.
 func (d *displayOutput) Write(bins [][]float64, nchannels int) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-
-	if len(d.binsBuffer) < len(bins) || len(d.binsBuffer[0]) < len(bins[0]) {
-		d.binsBuffer = input.MakeBuffers(len(bins), len(bins[0]))
-	}
-	input.CopyBuffers(d.binsBuffer, bins)
 
 	nbins := (*Display)(d).bins(nchannels)
 	var peak float64
@@ -92,21 +104,40 @@ func (d *displayOutput) Write(bins [][]float64, nchannels int) error {
 	d.scale = 1.0
 	d.nchannels = nchannels
 
-	if d.peak >= PeakThreshold {
-		// do some scaling if we are above the PeakThreshold
-		vMean, vSD := d.window.Update(d.peak)
-		if t := vMean + (2.0 * vSD); t > 1.0 {
-			d.scale = t
+	if d.peak < SilenceThreshold {
+		if d.silence < SilenceFrames {
+			d.silence++
 		}
-
-		d.zeroes = 0
-	} else if d.zeroes < ZeroThreshold {
-		d.zeroes++
+	} else if d.silence != 0 {
+		d.silence = 0
 	}
 
-	select {
-	case d.Draw <- struct{}{}:
-	default:
+	if !d.isSilent() {
+		// Only copy over audio data if we are not silent.
+		// We know this based on the given buffer, not the local buffer that we
+		// copy to.
+		if len(d.binsBuffer) < len(bins) || len(d.binsBuffer[0]) < len(bins[0]) {
+			// Ensure that we have enough space in the buffer.
+			d.binsBuffer = input.MakeBuffers(len(bins), len(bins[0]))
+		}
+		input.CopyBuffers(d.binsBuffer, bins)
+
+		if d.peak >= PeakThreshold {
+			// do some scaling if we are above the PeakThreshold
+			vMean, vSD := d.window.Update(d.peak)
+			if t := vMean + (2.0 * vSD); t > 1.0 {
+				d.scale = t
+			}
+
+			d.zeroes = 0
+		} else if d.zeroes < ZeroThreshold {
+			d.zeroes++
+		}
+
+		select {
+		case d.Draw <- struct{}{}:
+		default:
+		}
 	}
 
 	return nil
