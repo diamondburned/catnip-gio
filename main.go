@@ -18,6 +18,7 @@ import (
 	"github.com/noriah/catnip"
 	"github.com/noriah/catnip/dsp"
 	"github.com/noriah/catnip/dsp/window"
+	"github.com/noriah/catnip/input"
 	"github.com/spf13/pflag"
 	"libdb.so/catnip-gio/catnipgio"
 
@@ -33,6 +34,7 @@ var (
 	sampleSize   = 2048
 	smoothFactor = 0.5
 	background   = colorFlag{0, 0, 0, 255}
+	listAll      = false
 )
 
 func init() {
@@ -43,6 +45,7 @@ func init() {
 	pflag.Float64VarP(&sampleRate, "sample-rate", "r", sampleRate, "sample rate")
 	pflag.IntVarP(&sampleSize, "sample-size", "s", sampleSize, "sample size")
 	pflag.Float64VarP(&smoothFactor, "smooth-factor", "f", smoothFactor, "smoothing factor")
+	pflag.BoolVarP(&listAll, "list-all", "l", listAll, "list all audio devices")
 	pflag.VarP(&background, "background", "B", "background color")
 }
 
@@ -51,6 +54,23 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+
+	if listAll {
+		for _, backend := range input.Backends {
+			devices, err := backend.Devices()
+			if err != nil {
+				log.Printf("cannot list devices for %q: %v\n", backend.Name, err)
+				continue
+			}
+
+			fmt.Printf("%s:\n", backend.Name)
+			for _, device := range devices {
+				fmt.Printf("  - %s\n", device)
+			}
+			fmt.Println()
+		}
+		return
+	}
 
 	go func() {
 		w := app.NewWindow()
