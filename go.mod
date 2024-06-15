@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	gioui.org v0.0.0-20230506155350-febadd314531
-	github.com/noriah/catnip v1.8.1-0.20230724154059-2bb7ccfaad0c
+	github.com/noriah/catnip v1.8.5
 	github.com/spf13/pflag v1.0.5
 )
 

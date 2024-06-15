@@ -152,7 +152,7 @@ func (d *displayOutput) Bins(nchannels int) int {
 }
 
 func (d *Display) bins(nchannels int) int {
-	return d.width / int(d.binWidth)
+	return d.width / int(d.binWidth) / nchannels
 }
 
 func (d *Display) Layout(gtx layout.Context) {
