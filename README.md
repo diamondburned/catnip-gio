@@ -1,11 +1,13 @@
-# catnip-gio
-
 <div align="center">
+  <h1>catnip-gio</h1>
   <img src=".github/screenshot01.png" width="400" />
-</div>
+  <p>
 
-GUI frontend in [Gio](https://gioui.org) for the
-[catnip](https://github.com/noriah/catnip) visualizer.
+  GUI frontend in [Gio](https://gioui.org) for the
+  [catnip](https://github.com/noriah/catnip) visualizer.
+
+  </p>
+</div>
 
 ## Build
 
