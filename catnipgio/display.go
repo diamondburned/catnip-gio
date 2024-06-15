@@ -26,8 +26,10 @@ const SilenceFrames = 10
 // Display is a display of audio data using the Cairo vector graphics
 // library.
 type Display struct {
-	BarColor color.NRGBA
-	Draw     chan struct{}
+	BarColors [2]color.NRGBA
+	DrawStyle DrawStyle
+
+	Draw chan struct{}
 
 	window *window.MovingWindow
 	lock   sync.Mutex
@@ -51,10 +53,16 @@ var _ processor.Output = (*displayOutput)(nil)
 func NewDisplay(sampleRate float64, sampleSize int) *Display {
 	windowSize := ((int(ScalingWindow * sampleRate)) / sampleSize) * 2
 
-	d := &Display{Draw: make(chan struct{}, 1)}
+	d := &Display{
+		Draw:      make(chan struct{}, 1),
+		DrawStyle: DrawSymmetricVerticalBars,
+		BarColors: [2]color.NRGBA{
+			{255, 255, 255, 255},
+			{255, 255, 255, 255},
+		},
+	}
 	d.window = window.NewMovingWindow(windowSize)
 
-	d.BarColor = color.NRGBA{255, 255, 255, 255}
 	d.SetSizes(20, 4)
 	return d
 }
@@ -155,19 +163,22 @@ func (d *Display) bins(nchannels int) int {
 	return d.width / int(d.binWidth) / nchannels
 }
 
-func (d *Display) Layout(gtx layout.Context) {
+func (d *Display) Layout(gtx layout.Context) layout.Dimensions {
 	d.lock.Lock()
 	defer d.lock.Unlock()
+
+	if d.nchannels == 0 {
+		// Not initialized yet.
+		return layout.Dimensions{}
+	}
 
 	d.width = gtx.Constraints.Min.X
 	d.height = gtx.Constraints.Min.Y
 
-	d.drawHorizontally(gtx)
-}
-
-func (d *Display) drawHorizontally(gtx layout.Context) {
 	wf := float64(d.width)
-	hf := float64(d.height)
+	hf := float64(d.height) - 2*d.barWidth
+	xo := d.spaceWidth
+	yo := d.barWidth
 
 	bins := d.binsBuffer
 
@@ -181,33 +192,67 @@ func (d *Display) drawHorizontally(gtx layout.Context) {
 	xBin := 0
 	xCol := (d.binWidth)/2 + (wf-xColMax)/2
 
-	paint.ColorOp{Color: d.BarColor}.Add(gtx.Ops)
+	if d.BarColors[0] == d.BarColors[1] {
+		paint.ColorOp{
+			Color: d.BarColors[0],
+		}.Add(gtx.Ops)
+	} else {
+		paint.LinearGradientOp{
+			Stop1:  f32.Pt(float32(xCol), 0),
+			Stop2:  f32.Pt(float32(xCol), float32(d.height)),
+			Color1: d.BarColors[0],
+			Color2: d.BarColors[1],
+		}.Add(gtx.Ops)
+	}
 
 	var path clip.Path
 	path.Begin(gtx.Ops)
 
-	for _, chBins := range bins {
-		for xBin < nbars && xBin >= 0 && xCol < xColMax {
-			stop := calculateBar(chBins[xBin]*scale, hf)
-			d.drawBar(gtx, &path, xCol, hf, stop)
+	switch d.DrawStyle {
+	case DrawVerticalBars:
+		for _, chBins := range bins {
+			for xBin < nbars && xBin >= 0 && xCol < xColMax {
+				stop := calculateBar(chBins[xBin]*scale, hf)
+				drawBar(&path, xo+xCol, yo+hf, yo+stop)
 
-			xCol += d.binWidth
-			xBin += delta
+				xCol += d.binWidth
+				xBin += delta
+			}
+
+			delta = -delta
+			xBin += delta // ensure xBin is not out of bounds first.
 		}
 
-		delta = -delta
-		xBin += delta // ensure xBin is not out of bounds first.
+	case DrawSymmetricVerticalBars:
+		lBins := bins[0]
+		rBins := bins[1%len(bins)]
+		center := hf / 2
+
+		for xBin < nbars && xCol < xColMax {
+			lStop := calculateBar(lBins[xBin]*scale, center)
+			rStop := calculateBar(rBins[xBin]*scale, center)
+			drawBar(&path, xo+xCol, yo+lStop, yo+hf-rStop)
+
+			xCol += d.binWidth
+			xBin++
+		}
 	}
 
-	clip.Stroke{
+	stack := clip.Stroke{
 		Path:  path.End(),
 		Width: float32(d.barWidth),
 	}.Op().Push(gtx.Ops)
+	defer stack.Pop()
 
 	paint.PaintOp{}.Add(gtx.Ops)
+
+	return layout.Dimensions{
+		Size:     gtx.Constraints.Max.Sub(gtx.Constraints.Min),
+		Baseline: 0,
+	}
 }
 
-func (d *Display) drawBar(gtx layout.Context, path *clip.Path, xCol, to, from float64) {
-	path.MoveTo(f32.Pt(float32(xCol), float32(from)))
-	path.LineTo(f32.Pt(float32(xCol), float32(to)))
+func drawBar(path *clip.Path, xCol, start, stop float64) {
+	path.MoveTo(f32.Pt(float32(xCol), float32(start)))
+	path.LineTo(f32.Pt(float32(xCol), float32(stop)))
 }

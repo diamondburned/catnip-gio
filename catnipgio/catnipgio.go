@@ -4,11 +4,11 @@ const ScalingWindow = 1.5 // seconds
 const PeakThreshold = 0.01
 const ZeroThreshold = 5
 
-type DrawStyle int
+type DrawStyle string
 
 const (
-	DrawVertically DrawStyle = iota
-	DrawLines
+	DrawVerticalBars          DrawStyle = "vertical"
+	DrawSymmetricVerticalBars DrawStyle = "symmetric"
 )
 
 func calculateBar(value, height float64) float64 {
