@@ -19,3 +19,25 @@ After that, build this like a regular Go program:
 ```sh
 go build
 ```
+
+## Usage
+
+First, list all devices:
+
+```sh
+―❤―▶ ./catnip-gio -l
+pipewire:
+  - alsa_output.pci-0000_03_00.1.hdmi-stereo-extra4
+  - alsa_output.pci-0000_0d_00.6.analog-stereo
+  - easyeffects_sink
+  - Firefox
+  - io.github.celluloid_player.Celluloid
+```
+
+Then, pick the device:
+
+```sh
+―❤―▶ ./catnip-gio -b pipewire -d easyeffects_sink
+```
+
+For more configurations, see `-h`.
