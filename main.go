@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	"gioui.org/app"
 	"gioui.org/io/system"
@@ -51,7 +54,7 @@ var (
 	barWidth     = 15.0
 	barGap       = 5.0
 	background   = flags.MustParseColorNRGBA("#000000")
-	barColors    = flags.NewArray(flags.MustParseColorNRGBA("#FFFFFF"))
+	barColors    = flags.NewArray(",", flags.MustParseColorNRGBA("#FFFFFF"))
 	drawStyle    = flags.NewStringEnum(catnipgio.DrawSymmetricVerticalBars, catnipgio.DrawVerticalBars)
 	binMethod    = flags.NewStringEnum(AverageSamples, SumSamples, MaxSampleValue, MinSampleValue)
 )
@@ -73,7 +76,9 @@ func init() {
 }
 
 func main() {
+	loadFlags()
 	pflag.Parse()
+	saveFlags()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -101,10 +106,13 @@ func main() {
 	win.Option(app.Size(unit.Dp(1000), unit.Dp(200)))
 
 	go func() {
-		if err := run(ctx, win); err != nil && !errors.Is(err, ctx.Err()) {
-			log.Fatal(err)
+		if err := run(ctx, win); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error(
+				"error occured",
+				"err", err)
+			win.Perform(system.ActionClose)
+			os.Exit(1)
 		}
-		log.Println("goodbye")
 		os.Exit(0)
 	}()
 
@@ -112,6 +120,9 @@ func main() {
 }
 
 func run(ctx context.Context, win *app.Window) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	errg, ctx := errgroup.WithContext(ctx)
 	defer errg.Wait()
 
@@ -129,18 +140,26 @@ func run(ctx context.Context, win *app.Window) error {
 	}
 
 	errg.Go(func() error {
-		for {
-			select {
-			case <-ctx.Done():
-				win.Perform(system.ActionClose)
-				return ctx.Err()
-			case <-display.Draw:
-				win.Invalidate()
-			}
-		}
+		// Watch for Ctrl+C and close the window when it happens.
+		<-ctx.Done()
+		win.Perform(system.ActionClose)
+		return nil
 	})
 
 	errg.Go(func() error {
+		for range display.Draw {
+			win.Invalidate()
+		}
+		return nil
+	})
+
+	errg.Go(func() error {
+		defer cancel()
+
+		// Close the display channel when catnip is done.
+		// This will cause the draw/invalidate loop to exit.
+		defer close(display.Draw)
+
 		const channelCount = 1
 
 		config := catnip.Config{
@@ -177,12 +196,19 @@ func run(ctx context.Context, win *app.Window) error {
 		}
 
 		d := float64(config.SampleSize) / config.SampleRate * 1000
-		log.Printf("sample duration: %.2fms (%.0fHz)\n", d, 1000/d)
+		slog.Debug(
+			"initializing catnip",
+			"sample_rate", config.SampleRate,
+			"sample_size", config.SampleSize,
+			"channel_count", config.ChannelCount,
+			"sample_duration", fmt.Sprintf("%.2fms (%.0fHz)", d, 1000/d))
 
 		return catnip.Run(&config, ctx)
 	})
 
 	errg.Go(func() error {
+		defer cancel()
+
 		th := material.NewTheme()
 		th.Bg = background.NRGBA()
 		th.Fg = barColors.At(0).NRGBA()
@@ -242,6 +268,96 @@ func run(ctx context.Context, win *app.Window) error {
 	})
 
 	return errg.Wait()
+}
+
+const (
+	configBase = "catnip-gio"
+	flagFile   = "flags.json"
+)
+
+func configPath(file string) (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot get user config dir: %w", err)
+	}
+
+	configDir = filepath.Join(configDir, configBase)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create config dir: %w", err)
+	}
+
+	return filepath.Join(configDir, file), nil
+}
+
+func saveFlags() {
+	configPath, err := configPath(flagFile)
+	if err != nil {
+		slog.Warn(
+			"cannot get config path",
+			"err", err)
+		return
+	}
+
+	flags := make(map[string]string)
+	pflag.VisitAll(func(f *pflag.Flag) {
+		flags[f.Name] = f.Value.String()
+	})
+
+	b, err := json.MarshalIndent(flags, "", "  ")
+	if err != nil {
+		slog.Error(
+			"cannot marshal flags",
+			"err", err)
+		return
+	}
+
+	if err := os.WriteFile(configPath, b, 0644); err != nil {
+		slog.Error(
+			"cannot save flags to file",
+			"path", configPath,
+			"err", err)
+	}
+}
+
+func loadFlags() {
+	configPath, err := configPath(flagFile)
+	if err != nil {
+		slog.Warn(
+			"cannot get config path",
+			"err", err)
+		return
+	}
+
+	b, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		slog.Error(
+			"cannot read flags",
+			"path", configPath,
+			"err", err)
+		return
+	}
+
+	var flags map[string]string
+	if err := json.Unmarshal(b, &flags); err != nil {
+		slog.Error(
+			"cannot unmarshal flags",
+			"path", configPath,
+			"err", err)
+		return
+	}
+
+	for name, value := range flags {
+		if err := pflag.Set(name, value); err != nil {
+			slog.Error(
+				"cannot restore flag",
+				"name", name,
+				"value", value,
+				"err", err)
+		}
+	}
 }
 
 func invertColor(c color.NRGBA) color.NRGBA {

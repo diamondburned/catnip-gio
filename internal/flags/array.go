@@ -3,22 +3,25 @@ package flags
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/spf13/pflag"
 )
 
 // Array is a pflag.Value that holds an array of values.
 type Array[T pflag.Value] struct {
-	Values []T
-	IsSet  bool
+	Separator string
+	Values    []T
+	IsSet     bool
 }
 
 var _ pflag.Value = (*Array[*ColorNRGBA])(nil)
 
-func NewArray[T pflag.Value](values ...T) *Array[T] {
+func NewArray[T pflag.Value](separator string, values ...T) *Array[T] {
 	return &Array[T]{
-		Values: values,
-		IsSet:  false,
+		Separator: separator,
+		Values:    values,
+		IsSet:     false,
 	}
 }
 
@@ -28,12 +31,17 @@ func (a *Array[T]) Set(s string) error {
 		a.IsSet = true
 	}
 
-	v := reflect.New(reflect.TypeFor[T]().Elem()).Interface().(pflag.Value)
-	if err := v.Set(s); err != nil {
-		return err
+	for _, s := range strings.Split(s, a.Separator) {
+		s = strings.TrimSpace(s)
+
+		v := reflect.New(reflect.TypeFor[T]().Elem()).Interface().(pflag.Value)
+		if err := v.Set(s); err != nil {
+			return fmt.Errorf("invalid value %q: %w", s, err)
+		}
+
+		a.Values = append(a.Values, v.(T))
 	}
 
-	a.Values = append(a.Values, v.(T))
 	return nil
 }
 
@@ -42,7 +50,11 @@ func (a *Array[T]) At(i int) T {
 }
 
 func (a *Array[T]) String() string {
-	return fmt.Sprintf("%v", *a)
+	values := make([]string, len(a.Values))
+	for i, v := range a.Values {
+		values[i] = v.String()
+	}
+	return strings.Join(values, a.Separator)
 }
 
 func (a *Array[T]) Type() string {
