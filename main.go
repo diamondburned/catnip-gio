@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -21,6 +20,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/charmbracelet/log"
 	"github.com/noriah/catnip"
 	"github.com/noriah/catnip/dsp"
 	"github.com/noriah/catnip/dsp/window"
@@ -80,6 +80,11 @@ func main() {
 	pflag.Parse()
 	saveFlags()
 
+	logger := slog.New(log.NewWithOptions(os.Stderr, log.Options{
+		Level: log.DebugLevel,
+	}))
+	slog.SetDefault(logger)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -87,7 +92,10 @@ func main() {
 		for _, backend := range input.Backends {
 			devices, err := backend.Devices()
 			if err != nil {
-				log.Printf("cannot list devices for %q: %v\n", backend.Name, err)
+				slog.Error(
+					"cannot list devices",
+					"backend", backend.Name,
+					"err", err)
 				continue
 			}
 
@@ -147,6 +155,10 @@ func run(ctx context.Context, win *app.Window) error {
 	})
 
 	errg.Go(func() error {
+		// NOTE: This is more efficient than e.Source.Execute(op.InvalidateCmd)
+		// still, despite what the documentation says. The reason for this is
+		// not sure, but it might be that display.Draw actually emits less often
+		// than the calculated draw frequency.
 		for range display.Draw {
 			win.Invalidate()
 		}
@@ -195,13 +207,14 @@ func run(ctx context.Context, win *app.Window) error {
 			}),
 		}
 
-		d := float64(config.SampleSize) / config.SampleRate * 1000
+		sampleDurationMs := float64(sampleSize) / sampleRate * 1000
 		slog.Debug(
 			"initializing catnip",
 			"sample_rate", config.SampleRate,
 			"sample_size", config.SampleSize,
 			"channel_count", config.ChannelCount,
-			"sample_duration", fmt.Sprintf("%.2fms (%.0fHz)", d, 1000/d))
+			"sample_duration", fmt.Sprintf("%.2fms", sampleDurationMs),
+			"sample_frequency", fmt.Sprintf("%.0fHz", 1000/sampleDurationMs))
 
 		return catnip.Run(&config, ctx)
 	})
@@ -261,6 +274,11 @@ func run(ctx context.Context, win *app.Window) error {
 						)
 					}))
 				}
+
+				// queue up the next draw
+				// e.Source.Execute(op.InvalidateCmd{
+				// 	At: e.Now.Add(sampleDuration),
+				// })
 
 				e.Frame(gtx.Ops)
 			}
