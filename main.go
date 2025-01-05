@@ -89,6 +89,9 @@ func main() {
 	defer cancel()
 
 	if listAll {
+		pflag.Set("list-all", "false")
+		saveFlags()
+
 		for _, backend := range input.Backends {
 			devices, err := backend.Devices()
 			if err != nil {
