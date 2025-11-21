@@ -24,26 +24,29 @@
 # 	];
 # }
 
-{ pkgs ? import <nixpkgs> {} }:
+{
+  pkgs ? import <nixpkgs> { },
+}:
 
 pkgs.mkShell {
-	buildInputs = with pkgs; [
-		# Gio dependencies.
-		vulkan-headers
-		libxkbcommon
-		wayland
-		xorg.libX11
-		xorg.libXcursor
-		xorg.libXfixes
-		libGL
-		pkg-config
-	];
+  buildInputs = with pkgs; [
+    # Gio dependencies.
+    vulkan-headers
+    libxkbcommon
+    libxcb
+    wayland
+    xorg.libX11
+    xorg.libXcursor
+    xorg.libXfixes
+    libGL
+    pkg-config
+  ];
 
-	nativeBuildInputs = with pkgs; [
-		go
-		gopls
-		gotools
-	];
+  nativeBuildInputs = with pkgs; [
+    go
+    gopls
+    gotools
+  ];
 
-	CGO_ENABLED = "1";
+  CGO_ENABLED = "1";
 }
