@@ -53,6 +53,7 @@ var (
 	decorated    = true
 	barWidth     = 15.0
 	barGap       = 5.0
+	scalingPower = 1.0
 	background   = flags.MustParseColorNRGBA("#000000")
 	barColors    = flags.NewArray(",", flags.MustParseColorNRGBA("#FFFFFF"))
 	drawStyle    = flags.NewStringEnum(catnipgio.DrawSymmetricVerticalBars, catnipgio.DrawVerticalBars)
@@ -69,6 +70,7 @@ func init() {
 	pflag.BoolVar(&decorated, "decorated", decorated, "enable client-side window decoration")
 	pflag.Float64VarP(&barWidth, "bar-width", "w", barWidth, "width of bars")
 	pflag.Float64VarP(&barGap, "bar-gap", "g", barGap, "gap between bars")
+	pflag.Float64VarP(&scalingPower, "scaling-power", "p", scalingPower, "power curve for scaling bar heights (1.0 = linear, 2.0 = exponential)")
 	pflag.VarP(background, "background", "B", "background color")
 	pflag.VarP(barColors, "bar-color", "c", "bar color gradient")
 	pflag.VarP(drawStyle, "draw-style", "S", "draw style")
@@ -139,7 +141,8 @@ func run(ctx context.Context, win *app.Window) error {
 
 	display := catnipgio.NewDisplay(sampleRate, sampleSize)
 	display.SetSizes(barWidth, barGap)
-	display.SetScaleHeadroom(0.2)
+	display.SetScaleHeadroom(0.0)
+	display.SetScalingPower(scalingPower)
 	display.DrawStyle = catnipgio.DrawStyle(drawStyle.Value)
 	switch len(barColors.Values) {
 	case 1, 2:

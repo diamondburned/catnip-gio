@@ -29,6 +29,7 @@ type Display struct {
 	BarColors     [2]color.NRGBA
 	DrawStyle     DrawStyle
 	ScaleHeadroom float64
+	ScalingPower  float64
 
 	Draw chan struct{}
 
@@ -55,8 +56,9 @@ func NewDisplay(sampleRate float64, sampleSize int) *Display {
 	windowSize := ((int(ScalingWindow * sampleRate)) / sampleSize) * 2
 
 	d := &Display{
-		Draw:      make(chan struct{}, 1),
-		DrawStyle: DrawSymmetricVerticalBars,
+		Draw:         make(chan struct{}, 1),
+		DrawStyle:    DrawSymmetricVerticalBars,
+		ScalingPower: 1.0,
 		BarColors: [2]color.NRGBA{
 			{255, 255, 255, 255},
 			{255, 255, 255, 255},
@@ -85,6 +87,14 @@ func (d *Display) SetScaleHeadroom(headroom float64) {
 	defer d.lock.Unlock()
 
 	d.ScaleHeadroom = min(max(headroom, 0), 1)
+}
+
+// SetScalingPower sets the scaling power for the display bars (1 = linear, 2 = quadratic).
+func (d *Display) SetScalingPower(power float64) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	d.ScalingPower = power
 }
 
 // AsOutput returns the Display as a processor.Output.
@@ -193,8 +203,21 @@ func (d *Display) Layout(gtx layout.Context) layout.Dimensions {
 	bins := d.binsBuffer
 
 	delta := 1
-	scale := hf / d.scale
 	nbars := d.bins(d.nchannels)
+
+	calculateBarHeight := func(val, maxH float64) float64 {
+		if val <= 0 || d.peak <= 0 {
+			return 0
+		}
+
+		// Normalize the value against the current frame's peak, apply the power curve,
+		// and then scale it up to the peak's linear height. This ensures the highest
+		// bar is always exactly as tall as it would be with a linear scaling power of 1.
+		peakRatio := val / d.peak
+		linearPeakHeight := (d.peak / d.scale) * maxH
+
+		return math.Pow(peakRatio, d.ScalingPower) * linearPeakHeight
+	}
 
 	// Round up the width so we don't draw a partial bar.
 	xColMax := math.Round(wf/d.binWidth) * d.binWidth
@@ -222,7 +245,7 @@ func (d *Display) Layout(gtx layout.Context) layout.Dimensions {
 	case DrawVerticalBars:
 		for _, chBins := range bins {
 			for xBin < nbars && xBin >= 0 && xCol < xColMax {
-				stop := calculateBar(chBins[xBin]*scale, hf)
+				stop := calculateBar(calculateBarHeight(chBins[xBin], hf), hf)
 				drawBar(&path, xo+xCol, yo+hf, yo+stop)
 
 				xCol += d.binWidth
@@ -239,8 +262,8 @@ func (d *Display) Layout(gtx layout.Context) layout.Dimensions {
 		center := hf / 2
 
 		for xBin < nbars && xCol < xColMax {
-			lStop := calculateBar(lBins[xBin]*scale, center)
-			rStop := calculateBar(rBins[xBin]*scale, center)
+			lStop := calculateBar(calculateBarHeight(lBins[xBin], center), center)
+			rStop := calculateBar(calculateBarHeight(rBins[xBin], center), center)
 			drawBar(&path, xo+xCol, yo+lStop, yo+hf-rStop)
 
 			xCol += d.binWidth
