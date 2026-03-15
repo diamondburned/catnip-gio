@@ -139,6 +139,7 @@ func run(ctx context.Context, win *app.Window) error {
 
 	display := catnipgio.NewDisplay(sampleRate, sampleSize)
 	display.SetSizes(barWidth, barGap)
+	display.SetScaleHeadroom(0.2)
 	display.DrawStyle = catnipgio.DrawStyle(drawStyle.Value)
 	switch len(barColors.Values) {
 	case 1, 2:

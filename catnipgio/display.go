@@ -26,8 +26,9 @@ const SilenceFrames = 10
 // Display is a display of audio data using the Cairo vector graphics
 // library.
 type Display struct {
-	BarColors [2]color.NRGBA
-	DrawStyle DrawStyle
+	BarColors     [2]color.NRGBA
+	DrawStyle     DrawStyle
+	ScaleHeadroom float64
 
 	Draw chan struct{}
 
@@ -77,6 +78,15 @@ func (d *Display) SetSizes(bar, space float64) {
 	d.binWidth = bar + space
 }
 
+// SetScaleHeadroom sets the headroom for the scale of the display.
+// Must be within [0.0, 1.0].
+func (d *Display) SetScaleHeadroom(headroom float64) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	d.ScaleHeadroom = min(max(headroom, 0), 1)
+}
+
 // AsOutput returns the Display as a processor.Output.
 func (d *Display) AsOutput() processor.Output {
 	return (*displayOutput)(d)
@@ -100,7 +110,7 @@ func (d *displayOutput) Write(bins [][]float64, nchannels int) error {
 	nbins := (*Display)(d).bins(nchannels)
 	var peak float64
 
-	for i := 0; i < nchannels; i++ {
+	for i := range nchannels {
 		for _, val := range bins[i][:nbins] {
 			if val > peak {
 				peak = val
@@ -136,7 +146,7 @@ func (d *displayOutput) Write(bins [][]float64, nchannels int) error {
 			if t := vMean + (2.0 * vSD); t > 1.0 {
 				d.scale = t
 			}
-
+			d.scale *= (1 + d.ScaleHeadroom)
 			d.zeroes = 0
 		} else if d.zeroes < ZeroThreshold {
 			d.zeroes++
