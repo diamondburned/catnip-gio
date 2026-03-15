@@ -76,14 +76,14 @@ func init() {
 }
 
 func main() {
-	loadFlags()
-	pflag.Parse()
-	saveFlags()
-
 	logger := slog.New(log.NewWithOptions(os.Stderr, log.Options{
 		Level: log.DebugLevel,
 	}))
 	slog.SetDefault(logger)
+
+	loadFlags()
+	pflag.Parse()
+	saveFlags()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -338,6 +338,11 @@ func saveFlags() {
 			"path", configPath,
 			"err", err)
 	}
+
+	slog.Debug(
+		"saved flags",
+		"path", configPath,
+		"flags", flags)
 }
 
 func loadFlags() {
@@ -352,6 +357,9 @@ func loadFlags() {
 	b, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			slog.Debug(
+				"no saved flags found",
+				"path", configPath)
 			return
 		}
 		slog.Error(
@@ -379,6 +387,11 @@ func loadFlags() {
 				"err", err)
 		}
 	}
+
+	slog.Debug(
+		"loaded saved flags",
+		"path", configPath,
+		"flags", flags)
 }
 
 func invertColor(c color.NRGBA) color.NRGBA {
